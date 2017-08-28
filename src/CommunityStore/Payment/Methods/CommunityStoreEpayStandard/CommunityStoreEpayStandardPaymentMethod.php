@@ -48,7 +48,7 @@ class CommunityStoreEpayStandardPaymentMethod extends StorePaymentMethod
 
         $merchantNumber = Config::get('community_store_epay_standard.epayMerchantNumber');
         $order = StoreOrder::getByID(Session::get('orderID'));
-        $this->set('total', $order->getTotal());
+        $this->set('total', ($order->getTotal() + 0) * 100);
         $this->set('notifyURL',URL::to('/checkout/epayresponse'));
         $this->set('orderID',$order->getOrderID());
         $this->set('returnURL',URL::to('/checkout/complete'));
@@ -75,7 +75,24 @@ class CommunityStoreEpayStandardPaymentMethod extends StorePaymentMethod
 
     public static function validateCompletion()
     {
+        $trxID = $_GET['txnid'];
+        $merchantNumber = Config::get('community_store_epay_standard.epayMerchantNumber');
+        $orderID = $_GET['orderid'];
+        $soap = new \SoapClient('https://ssl.ditonlinebetalingssystem.dk/remote/payment.asmx?WSDL');
+        $result = $soap->gettransaction([
+                'merchantnumber' => $merchantNumber,
+                'transactionid' => $trxID,
+                'epayresponse' => '-1'
+            ]);
+    
+        $successStatusList = ['PAYMENT_NEW', 'PAYMENT_CAPTURED'];
+        $verified = $result->transactionInformation && $result->transactionInformation->status && in_array($result->transactionInformation->status, $successStatusList);
         
+        if ($verified) {
+            $order = StoreOrder::getByID($orderID);
+            $order->completeOrder($orderID);
+            $order->updateStatus(StoreOrderStatus::getStartingStatus()->getHandle());
+        }
     }
 
 
